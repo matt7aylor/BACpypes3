@@ -32,7 +32,7 @@ class IPv6DatagramProtocol(asyncio.DatagramProtocol):
         if _debug:
             IPv6DatagramProtocol._debug("connection_made %r", transport)
 
-    def datagram_received(self, data: bytes, addr: Tuple[str, int]) -> None:
+    def datagram_received(self, data: bytes, addr: Tuple[str, int, int, int]) -> None:
         if _debug:
             IPv6DatagramProtocol._debug("datagram_received %r %r", data, addr)
 
@@ -56,15 +56,17 @@ class IPv6DatagramServer(Server[PDU]):
 
     interface_index: int
     local_address: Tuple[str, int, int, int]
+    broadcast_address: Tuple[str, int, int, int]
     transport: Optional[asyncio.DatagramTransport]
     protocol: Optional[IPv6DatagramProtocol]
 
     def __init__(
         self,
         address: IPv6Address,
+        multicast_groups: Optional[List[str]] = None,
     ) -> None:
         if _debug:
-            IPv6DatagramServer._debug("__init__ %r", address)
+            IPv6DatagramServer._debug("__init__ %r %r", address, multicast_groups)
 
         # grab the loop to create tasks and endpoints
         loop: asyncio.events.AbstractEventLoop = asyncio.get_running_loop()
@@ -90,9 +92,23 @@ class IPv6DatagramServer(Server[PDU]):
         if _debug:
             IPv6DatagramServer._debug("    - local_socket: %r", local_socket)
 
+        # allow multiple applications to use the same port
+        local_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            local_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+
         # join the IANA assigned link-local multicast group
-        # TODO allow multiple/configurable multicast groups
-        for group in ["ff02::bac0"]:
+        if multicast_groups is None:
+            multicast_groups = ["ff02::bac0"]
+
+        # the first one is the broadcast address
+        self.broadcast_address = IPv6Address(
+            multicast_groups[0], port=self.local_address[1]
+        ).addrTuple
+
+        for group in multicast_groups:
+            if _debug:
+                IPv6DatagramServer._debug("    - join group: %r", group)
             local_socket.setsockopt(
                 socket.IPPROTO_IPV6,
                 socket.IPV6_JOIN_GROUP,
@@ -102,7 +118,9 @@ class IPv6DatagramServer(Server[PDU]):
                     self.interface_index,
                 ),
             )
-        local_socket.bind(address.addrTuple)
+
+        # bind to the wildcard address to receive multicast
+        local_socket.bind(("", self.local_address[1], 0, self.interface_index))
 
         # easy call to create a local endpoint
         local_endpoint_task = loop.create_task(
@@ -170,13 +188,11 @@ class IPv6DatagramServer(Server[PDU]):
 
         # downstream packets can have a specific or local broadcast address
         if isinstance(pdu.pduDestination, LocalBroadcast):
-            pdu_destination = IPv6LinkLocalMulticastAddress(
-                port=self.local_address[1], interface=self.interface_index
-            ).addrTuple
+            pdu_destination = self.broadcast_address
         elif isinstance(pdu.pduDestination, IPv6Address):
             pdu_destination = pdu.pduDestination.addrTuple
         else:
-            raise ValueError("invalid destination: {pdu.pduDestination}")
+            raise ValueError(f"invalid destination: {pdu.pduDestination}")
         if _debug:
             IPv6DatagramServer._debug("    - pdu_destination: %r", pdu_destination)
 
@@ -188,9 +204,10 @@ class IPv6DatagramServer(Server[PDU]):
             IPv6DatagramServer._debug("confirmation %r", pdu)
 
         assert isinstance(pdu.pduSource, IPv6Address)
-        if pdu.pduSource.addrTuple[:2] == self.local_address[:2]:
+        if pdu.pduSource.addrTuple == self.local_address:
             if _debug:
-                IPv6DatagramServer._debug("    - broadcast/reflected?")
+                IPv6DatagramServer._debug("    - broadcast/reflected")
+            return
 
         # up the stack it goes
         await self.response(pdu)

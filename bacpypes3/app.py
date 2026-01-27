@@ -48,6 +48,11 @@ from .errors import AbortException, ExecutionError, RejectException, Unrecognize
 from .ipv4.link import BBMDLinkLayer as BBMDLinkLayer_ipv4
 from .ipv4.link import ForeignLinkLayer as ForeignLinkLayer_ipv4
 from .ipv4.link import NormalLinkLayer as NormalLinkLayer_ipv4
+from .ipv6.link import (
+    BBMDLinkLayer as BBMDLinkLayer_ipv6,
+    ForeignLinkLayer as ForeignLinkLayer_ipv6,
+    NormalLinkLayer as NormalLinkLayer_ipv6,
+)
 
 # for serialized parameter initialization
 from .json import json_to_sequence
@@ -63,7 +68,7 @@ from .netservice import (
     RouterInfoCache,
 )
 from .object import DeviceObject, Object
-from .pdu import Address
+from .pdu import Address, IPv6Address, VirtualAddress
 from .primitivedata import ObjectIdentifier, ObjectType
 from .service.cov import ChangeOfValueServices
 
@@ -656,7 +661,79 @@ class Application(
                     )
 
             elif obj.networkType == NetworkType.ipv6:
-                raise NotImplementedError("IPv6")
+                link_address = obj.address
+                if _debug:
+                    Application._debug("     - link_address: %r", link_address)
+
+                # virtual MAC address
+                if obj.macAddress and (len(obj.macAddress) == 3):
+                    virtual_address = VirtualAddress(obj.macAddress)
+                else:
+                    device_instance = self.device_object.objectIdentifier[1]
+                    virtual_address = VirtualAddress(
+                        bytes(
+                            [
+                                (device_instance >> 16) & 0xFF,
+                                (device_instance >> 8) & 0xFF,
+                                device_instance & 0xFF,
+                            ]
+                        )
+                    )
+                if _debug:
+                    Application._debug("     - virtual_address: %r", virtual_address)
+
+                # multicast groups
+                import socket
+                multicast_groups = [
+                    socket.inet_ntop(socket.AF_INET6, obj.bacnetIPv6MulticastAddress)
+                ]
+                if _debug:
+                    Application._debug("     - multicast_groups: %r", multicast_groups)
+
+                if obj.bacnetIPv6Mode == IPMode.normal:
+                    link_layer = NormalLinkLayer_ipv6(
+                        link_address,
+                        virtual_address,
+                        multicast_groups=multicast_groups,
+                    )
+                    if _debug:
+                        Application._debug("     - link_layer: %r", link_layer)
+
+                elif obj.bacnetIPv6Mode == IPMode.foreign:
+                    link_layer = ForeignLinkLayer_ipv6(link_address, virtual_address)
+                    if _debug:
+                        Application._debug("     - link_layer: %r", link_layer)
+
+                    # start the registration process
+                    link_layer.register(
+                        obj.fdBBMDAddress.address, obj.fdSubscriptionLifetime
+                    )
+
+                elif obj.bacnetIPv6Mode == IPMode.bbmd:
+                    link_layer = BBMDLinkLayer_ipv6(link_address, virtual_address)
+                    if _debug:
+                        Application._debug("     - link_layer: %r", link_layer)
+
+                    # for bdt_entry in obj.bbmdBroadcastDistributionTable:
+                    #     if _debug:
+                    #         Application._debug("     - bdt_entry: %r", bdt_entry)
+                    #
+                    #     link_layer.add_peer(bdt_entry.address)
+
+                else:
+                    raise NotImplementedError(f"{obj.bacnetIPv6Mode}")
+
+                # save a reference from the object to the link layer, maybe
+                # this will be deleted (in which case it will be closed)
+                self.link_layers[obj.objectIdentifier] = link_layer
+
+                # let the NSAP know about this link layer
+                if obj.networkNumber == 0:
+                    self.nsap.bind(link_layer, address=link_address)
+                else:
+                    self.nsap.bind(
+                        link_layer, net=obj.networkNumber, address=link_address
+                    )
 
             elif obj.networkType == NetworkType.virtual:
                 link_address = obj.address

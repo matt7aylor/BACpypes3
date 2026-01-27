@@ -146,7 +146,13 @@ class NetworkPortObject(_Object, _NetworkPortObject):
         elif self.networkType == NetworkType.ipv6:
             if _debug:
                 NetworkPortObject._debug("    - IPv6")
-            raise NotImplementedError("no IPv6 yet")
+
+            import socket
+            addr = socket.inet_ntop(socket.AF_INET6, self.ipv6Address)
+            prefix = str(self.ipv6PrefixLength)
+            port = str(self.bacnetIPv6UDPPort)
+
+            return IPv6Address(f"[{addr}/{prefix}]:{port}")
 
         elif self.networkType == NetworkType.virtual:
             if _debug:

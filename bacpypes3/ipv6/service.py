@@ -195,10 +195,33 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
 
         # check for local stations
         if pdu.pduDestination.addrType == Address.localStationAddr:
-            # destination address is a VirtualAddress
-            destination_ipv6_address: IPv6Address = self.vmac_addr_table[
-                pdu.pduDestination
-            ]
+            # check if destination address is an IPv6Address
+            if isinstance(pdu.pduDestination, IPv6Address):
+                destination_ipv6_address = pdu.pduDestination
+                # lookup VMAC from IPv6 address
+                pdu.pduDestination = self.vmac_addr_table[destination_ipv6_address]
+                # if there is no VMAC, we have to resolve it
+                if not pdu.pduDestination:
+                    if _debug:
+                        BIPNormal._debug("    - VMAC for %r unknown, sending as broadcast", destination_ipv6_address)
+                    # make an original broadcast PDU, but send it to the specific IPv6 address
+                    xpdu = OriginalBroadcastNPDU(
+                        self.virtual_address,
+                        pdu,
+                        destination=destination_ipv6_address,
+                        user_data=pdu.pduUserData,
+                    )
+                    if _debug:
+                        BIPNormal._debug("    - xpdu: %r", xpdu)
+
+                    # send it downstream
+                    await self.request(xpdu)
+                    return
+            else:
+                # destination address is a VirtualAddress
+                destination_ipv6_address: IPv6Address = self.vmac_addr_table[
+                    pdu.pduDestination
+                ]
 
             # if there is a service element, let it resolve it
             if not destination_ipv6_address:
@@ -487,14 +510,37 @@ class BIPForeign(BVLLServiceAccessPoint, DebugContents):
 
     async def indication(self, pdu: PDU) -> None:
         if _debug:
-            BIPForeign._debug("indication %r", pdu)
+            BIPNormal._debug("indication %r", pdu)
 
         # check for local stations
         if pdu.pduDestination.addrType == Address.localStationAddr:
-            # destination address is a VirtualAddress
-            destination_ipv6_address: IPv6Address = self.vmac_addr_table[
-                pdu.pduDestination
-            ]
+            # check if destination address is an IPv6Address
+            if isinstance(pdu.pduDestination, IPv6Address):
+                destination_ipv6_address = pdu.pduDestination
+                # lookup VMAC from IPv6 address
+                pdu.pduDestination = self.vmac_addr_table[destination_ipv6_address]
+                # if there is no VMAC, we have to resolve it
+                if not pdu.pduDestination:
+                    if _debug:
+                        BIPNormal._debug("    - VMAC for %r unknown, sending as broadcast", destination_ipv6_address)
+                    # make an original broadcast PDU, but send it to the specific IPv6 address
+                    xpdu = OriginalBroadcastNPDU(
+                        self.virtual_address,
+                        pdu,
+                        destination=destination_ipv6_address,
+                        user_data=pdu.pduUserData,
+                    )
+                    if _debug:
+                        BIPNormal._debug("    - xpdu: %r", xpdu)
+
+                    # send it downstream
+                    await self.request(xpdu)
+                    return
+            else:
+                # destination address is a VirtualAddress
+                destination_ipv6_address: IPv6Address = self.vmac_addr_table[
+                    pdu.pduDestination
+                ]
 
             # if there is a service element, let it resolve it
             if not destination_ipv6_address:

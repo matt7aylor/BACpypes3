@@ -1464,6 +1464,8 @@ class IPv6Address(Address, ipaddress.IPv6Interface):
         elif isinstance(addr, tuple):
             if _debug:
                 IPv6Address._debug("    - tuple")
+            if len(addr) > 3:
+                interface_index = addr[3]
             addr, port = addr[:2]
 
             if isinstance(addr, (int, str)):
