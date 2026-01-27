@@ -308,7 +308,6 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
 
             # update the virtual address table
             self.vmac_addr_table[lpdu.bvlciSourceVirtualAddress] = lpdu.pduSource
-
             # build a PDU with a local broadcast address
             pdu = PDU(
                 lpdu.pduData,
@@ -318,6 +317,8 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
             )
             if _debug:
                 BIPNormal._debug("    - pdu: %r", pdu)
+
+
 
             # send it upstream
             await self.response(pdu)
@@ -510,7 +511,7 @@ class BIPForeign(BVLLServiceAccessPoint, DebugContents):
 
     async def indication(self, pdu: PDU) -> None:
         if _debug:
-            BIPNormal._debug("indication %r", pdu)
+            BIPForeign._debug("indication %r", pdu)
 
         # check for local stations
         if pdu.pduDestination.addrType == Address.localStationAddr:
@@ -522,7 +523,7 @@ class BIPForeign(BVLLServiceAccessPoint, DebugContents):
                 # if there is no VMAC, we have to resolve it
                 if not pdu.pduDestination:
                     if _debug:
-                        BIPNormal._debug("    - VMAC for %r unknown, sending as broadcast", destination_ipv6_address)
+                        BIPForeign._debug("    - VMAC for %r unknown, sending as broadcast", destination_ipv6_address)
                     # make an original broadcast PDU, but send it to the specific IPv6 address
                     xpdu = OriginalBroadcastNPDU(
                         self.virtual_address,
@@ -531,7 +532,7 @@ class BIPForeign(BVLLServiceAccessPoint, DebugContents):
                         user_data=pdu.pduUserData,
                     )
                     if _debug:
-                        BIPNormal._debug("    - xpdu: %r", xpdu)
+                        BIPForeign._debug("    - xpdu: %r", xpdu)
 
                     # send it downstream
                     await self.request(xpdu)
@@ -552,7 +553,7 @@ class BIPForeign(BVLLServiceAccessPoint, DebugContents):
                 except asyncio.TimeoutError:
                     return
             if _debug:
-                BIPNormal._debug(
+                BIPForeign._debug(
                     "    - destination_ipv6_address: %r", destination_ipv6_address
                 )
 
@@ -1377,7 +1378,7 @@ class BIPBBMD(BVLLServiceAccessPoint, DebugContents):
                     user_data=lpdu.pduUserData,
                 )
                 if _debug:
-                    BIPNormal._debug("    - pdu: %r", pdu)
+                    BIPBBMD._debug("    - pdu: %r", pdu)
 
                 # send it upstream
                 await self.response(pdu)
@@ -1683,4 +1684,3 @@ class BVLLServiceElement(ApplicationServiceElement):
 
         # request is no longer pending, set the value
         future = self.virtual_address_resolution.pop(address)
-        future.set_result(lpdu.pduSource)

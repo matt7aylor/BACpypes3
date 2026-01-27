@@ -97,6 +97,16 @@ class IPv6DatagramServer(Server[PDU]):
         if hasattr(socket, "SO_REUSEPORT"):
             local_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
+        # set the hop limit to 255 for multicast and 64 for unicast to ensure routing
+        local_socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_UNICAST_HOPS, 64)
+        local_socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 255)
+
+        # set the multicast interface
+        if self.interface_index:
+            local_socket.setsockopt(
+                socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, self.interface_index
+            )
+
         # join the IANA assigned link-local multicast group
         if multicast_groups is None:
             multicast_groups = ["ff02::bac0"]
@@ -208,6 +218,15 @@ class IPv6DatagramServer(Server[PDU]):
             if _debug:
                 IPv6DatagramServer._debug("    - broadcast/reflected")
             return
+
+        # check for LoopbackAddress
+        if pdu.pduSource.addrTuple[0] == "::1":
+            if _debug:
+                IPv6DatagramServer._debug("    - loopback")
+            if pdu.pduSource.addrTuple[1] == self.local_address[1]:
+                if _debug:
+                    IPv6DatagramServer._debug("    - broadcast/reflected (loopback)")
+                return
 
         # up the stack it goes
         await self.response(pdu)

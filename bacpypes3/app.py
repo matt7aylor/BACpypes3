@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import dataclasses
 import re
+import socket
 
 from functools import partial
 from typing import TYPE_CHECKING
@@ -683,7 +684,6 @@ class Application(
                     Application._debug("     - virtual_address: %r", virtual_address)
 
                 # multicast groups
-                import socket
                 multicast_groups = [
                     socket.inet_ntop(socket.AF_INET6, obj.bacnetIPv6MulticastAddress)
                 ]
@@ -714,11 +714,11 @@ class Application(
                     if _debug:
                         Application._debug("     - link_layer: %r", link_layer)
 
-                    # for bdt_entry in obj.bbmdBroadcastDistributionTable:
-                    #     if _debug:
-                    #         Application._debug("     - bdt_entry: %r", bdt_entry)
-                    #
-                    #     link_layer.add_peer(bdt_entry.address)
+                    for bdt_entry in obj.bbmdBroadcastDistributionTable:
+                        if _debug:
+                            Application._debug("     - bdt_entry: %r", bdt_entry)
+
+                        link_layer.add_peer(bdt_entry.address)
 
                 else:
                     raise NotImplementedError(f"{obj.bacnetIPv6Mode}")

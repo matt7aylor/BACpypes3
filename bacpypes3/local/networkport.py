@@ -4,6 +4,7 @@ Network Port Object
 
 from __future__ import annotations
 
+import socket
 from typing import Callable, Optional
 
 from ..debugging import bacpypes_debugging, ModuleLogger
@@ -147,7 +148,6 @@ class NetworkPortObject(_Object, _NetworkPortObject):
             if _debug:
                 NetworkPortObject._debug("    - IPv6")
 
-            import socket
             addr = socket.inet_ntop(socket.AF_INET6, self.ipv6Address)
             prefix = str(self.ipv6PrefixLength)
             port = str(self.bacnetIPv6UDPPort)
