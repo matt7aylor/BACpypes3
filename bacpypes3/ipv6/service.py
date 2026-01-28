@@ -252,11 +252,14 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
             await self.request(xpdu)
 
         # check for broadcasts
-        elif pdu.pduDestination.addrType == Address.localBroadcastAddr:
+        elif pdu.pduDestination.addrType in (
+            Address.localBroadcastAddr,
+            Address.globalBroadcastAddr,
+        ):
             # make an original broadcast PDU
             xpdu = OriginalBroadcastNPDU(
                 self.virtual_address,
-                pdu,
+                pdu.pduData,
                 destination=pdu.pduDestination,
                 user_data=pdu.pduUserData,
             )
@@ -288,9 +291,11 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
             self.vmac_addr_table[lpdu.bvlciSourceVirtualAddress] = lpdu.pduSource
 
             # build a PDU
+            pdu_source = lpdu.bvlciSourceVirtualAddress
+            pdu_source.addrRoute = lpdu.pduSource
             pdu = PDU(
                 lpdu.pduData,
-                source=lpdu.bvlciSourceVirtualAddress,
+                source=pdu_source,
                 destination=self.virtual_address,
                 user_data=lpdu.pduUserData,
             )
@@ -309,16 +314,16 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
             # update the virtual address table
             self.vmac_addr_table[lpdu.bvlciSourceVirtualAddress] = lpdu.pduSource
             # build a PDU with a local broadcast address
+            pdu_source = lpdu.bvlciSourceVirtualAddress
+            pdu_source.addrRoute = lpdu.pduSource
             pdu = PDU(
                 lpdu.pduData,
-                source=lpdu.bvlciSourceVirtualAddress,
+                source=pdu_source,
                 destination=LocalBroadcast(),
                 user_data=lpdu.pduUserData,
             )
             if _debug:
                 BIPNormal._debug("    - pdu: %r", pdu)
-
-
 
             # send it upstream
             await self.response(pdu)
@@ -392,9 +397,11 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
             ] = lpdu.bvlciSourceIPv6Address
 
             # build a PDU with the source from the real source
+            pdu_source = lpdu.bvlciSourceVirtualAddress
+            pdu_source.addrRoute = lpdu.bvlciSourceIPv6Address
             pdu = PDU(
                 lpdu.pduData,
-                source=lpdu.bvlciSourceVirtualAddress,
+                source=pdu_source,
                 destination=LocalBroadcast(),
                 user_data=lpdu.pduUserData,
             )
