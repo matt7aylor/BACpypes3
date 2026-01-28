@@ -49,46 +49,46 @@ class CmdProfile:
             return raw_arg
 
         # try to convert the value
-        if isinstance(arg_type, typing._GenericAlias):  # type: ignore[attr-defined]
-            if arg_type.__origin__ is Union:
-                for arg_subtype in arg_type.__args__:
-                    if _debug:
-                        CmdProfile._debug("    - arg_subtype: %r", arg_subtype)
-                    if arg_subtype is None.__class__:
-                        continue
+        origin = typing.get_origin(arg_type)
+        if origin is Union:
+            for arg_subtype in typing.get_args(arg_type):
+                if _debug:
+                    CmdProfile._debug("    - arg_subtype: %r", arg_subtype)
+                if arg_subtype is None.__class__:
+                    continue
 
-                    try:
-                        arg_value = arg_subtype(raw_arg)
-                        return arg_value
-                    except Exception as err:
-                        if _debug:
-                            CmdProfile._debug("    - exception: %r", err)
-                        pass
-                else:
-                    arg_type_names = [
-                        arg.__name__
-                        for arg in arg_type.__args__
-                        if arg is not None.__class__
-                    ]
-                    if len(arg_type_names) > 1:
-                        raise RuntimeError(
-                            f"parameter {arg}: one of {', '.join(arg_type_names)} expected"
-                        )
-                    else:
-                        raise RuntimeError(
-                            f"parameter {arg}: {arg_type_names[0]} expected"
-                        )
+                try:
+                    arg_value = arg_subtype(raw_arg)
+                    return arg_value
+                except Exception as err:
+                    if _debug:
+                        CmdProfile._debug("    - exception: %r", err)
+                    pass
             else:
-                raise RuntimeError(
-                    "annotation type not supported: {arg_type.__origin__}"
-                )
+                arg_type_names = [
+                    arg.__name__
+                    for arg in typing.get_args(arg_type)
+                    if arg is not None.__class__
+                ]
+                if len(arg_type_names) > 1:
+                    raise RuntimeError(
+                        f"parameter {arg}: one of {', '.join(arg_type_names)} expected"
+                    )
+                else:
+                    raise RuntimeError(
+                        f"parameter {arg}: {arg_type_names[0]} expected"
+                    )
         else:
             try:
                 arg_value = arg_type(raw_arg)
                 return arg_value
             except Exception as err:
+                if (arg_type is not None) and hasattr(arg_type, "__name__"):
+                    arg_type_name = arg_type.__name__
+                else:
+                    arg_type_name = str(arg_type)
                 raise RuntimeError(
-                    f"parameter {arg}: {err}: {arg_type.__name__} expected"
+                    f"parameter {arg}: {err}: {arg_type_name} expected"
                 )
 
     def __call__(self, args: List[str]) -> Tuple[Any, Any, Any]:
