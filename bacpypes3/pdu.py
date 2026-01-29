@@ -1452,9 +1452,8 @@ class IPv6Address(Address, ipaddress.IPv6Interface):
                     # if the prefix length is in the address, leave it, otherwise
                     # convert the netmask to a prefix length
                     if "/" not in addr_str:
-                        netmask_bytes = xtob(
-                            ipv6_address_dict["netmask"].replace(":", "")
-                        )
+                        netmask = ipv6_address_dict["netmask"].split("/")[0]
+                        netmask_bytes = xtob(netmask.replace(":", ""))
                         prefix_len = sum(
                             bin(x).count("1") for x in netmask_bytes
                         )
