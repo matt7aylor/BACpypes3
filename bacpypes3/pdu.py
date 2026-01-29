@@ -1182,9 +1182,7 @@ class IPv4Address(Address, ipaddress.IPv4Interface):
 
                         ipv4_address_str = dns_addresses.pop()
                         if _debug:
-                            IPv4Address._debug(
-                                "    - ipv4_address_str: %r", ipv4_address_str
-                            )
+                            IPv4Address._debug("    - ipv4_address_str: %r", ipv4_address_str)
 
                         ipaddress.IPv4Interface.__init__(self, ipv4_address_str + "/32")
 
@@ -1391,6 +1389,11 @@ class IPv6Address(Address, ipaddress.IPv6Interface):
                 # matching an interface name with an optional port eno1:47809
                 interface_port_match = interface_port_re.match(addr)
                 if interface_port_match:
+                    if not netifaces:
+                        raise RuntimeError(
+                            "install netifaces for interface name addresses"
+                        )
+
                     _interface, _port = interface_port_match.groups()
                     if _debug:
                         IPv6Address._debug(
@@ -1401,62 +1404,63 @@ class IPv6Address(Address, ipaddress.IPv6Interface):
                         _interface != interface
                     ):
                         raise ValueError("interface mismatch")
+                        interface = _interface
 
                     if _port:
                         port = int(_port)
 
                     ipv6_address: str = ""
-                    if netifaces:
-                        ifaddresses = netifaces.ifaddresses(_interface)
-                        ipv6_addresses_dicts = ifaddresses.get(netifaces.AF_INET6, [])
-                        if ipv6_addresses_dicts:
-                            # if there are multiple, try to find a global one
-                            if len(ipv6_addresses_dicts) > 1:
-                                for adict in ipv6_addresses_dicts:
-                                    if not adict["addr"].startswith("fe80:"):
-                                        ipv6_address_dict = adict
-                                        break
-                                else:
-                                    ipv6_address_dict = ipv6_addresses_dicts[0]
-                            else:
-                                ipv6_address_dict = ipv6_addresses_dicts[0]
+                    ifaddresses = netifaces.ifaddresses(_interface)
+                    ipv6_addresses_dicts = ifaddresses.get(netifaces.AF_INET6, [])
+                    if not ipv6_addresses_dicts:
+                        ValueError("no IPv6 address for interface: %r" % (interface,))
+                    # if there are multiple, try to find a global one
+                    if len(ipv6_addresses_dicts) > 1:
+                        for adict in ipv6_addresses_dicts:
+                            if not adict["addr"].startswith("fe80:"):
+                                ipv6_address_dict = adict
+                                break
+                        else:
+                            ipv6_address_dict = ipv6_addresses_dicts[0]
+                    else:
+                        ipv6_address_dict = ipv6_addresses_dicts[0]
 
-                            if _debug:
-                                IPv6Address._debug(
-                                    "    - ipv6_address_dict: %r", ipv6_address_dict
-                                )
+                    if _debug:
+                        IPv6Address._debug(
+                            "    - ipv6_address_dict: %r", ipv6_address_dict
+                        )
 
-                            # get the address
-                            addr_str = ipv6_address_dict["addr"]
-                            if _debug:
-                                IPv6Address._debug("    - addr_str: %r", addr_str)
+                    # get the address
+                    addr_str = ipv6_address_dict["addr"]
+                    if _debug:
+                        IPv6Address._debug("    - addr_str: %r", addr_str)
 
-                            # find the interface name (a.k.a. scope identifier)
-                            if "%" in addr_str:
-                                addr_str, _interface = addr_str.split("%")
-                                if (interface is not None) and (
-                                    _interface != interface
-                                ):
-                                    raise ValueError("interface mismatch")
+                    # find the interface name (a.k.a. scope identifier)
+                    if "%" in addr_str:
+                        addr_str, _interface = addr_str.split("%")
+                        if (interface is not None) and (
+                            _interface != interface
+                        ):
+                            raise ValueError("interface mismatch")
 
-                                interface_index = socket.if_nametoindex(_interface)
-                                if _debug:
-                                    IPv6Address._debug(
-                                        "    - interface_index: %r", interface_index
-                                    )
+                    interface_index = socket.if_nametoindex(_interface)
+                    if _debug:
+                        IPv6Address._debug(
+                            "    - interface_index: %r", interface_index
+                        )
 
-                            # if the prefix length is in the address, leave it, otherwise
-                            # convert the netmask to a prefix length
-                            if "/" not in addr_str:
-                                netmask_bytes = xtob(
-                                    ipv6_address_dict["netmask"].replace(":", "")
-                                )
-                                prefix_len = sum(
-                                    bin(x).count("1") for x in netmask_bytes
-                                )
-                                addr_str += "/" + str(prefix_len)
+                    # if the prefix length is in the address, leave it, otherwise
+                    # convert the netmask to a prefix length
+                    if "/" not in addr_str:
+                        netmask_bytes = xtob(
+                            ipv6_address_dict["netmask"].replace(":", "")
+                        )
+                        prefix_len = sum(
+                            bin(x).count("1") for x in netmask_bytes
+                        )
+                        addr_str += "/" + str(prefix_len)
 
-                            ipv6_address = addr_str
+                    ipv6_address = addr_str
 
                     if (not ipv6_address) and ifaddr:
                         adapters = ifaddr.get_adapters()
@@ -1518,7 +1522,9 @@ class IPv6Address(Address, ipaddress.IPv6Interface):
 
                     if ipv6_address:
                         ipaddress.IPv6Interface.__init__(self, ipv6_address)
+                        interface_index = socket.if_nametoindex(_interface)
                         break
+
 
                     raise RuntimeError(f"unable to resolve {_interface}")
 
@@ -1557,6 +1563,23 @@ class IPv6Address(Address, ipaddress.IPv6Interface):
 
         else:
             raise ValueError("invalid address")
+
+        # if the interface index is not set, try to find it
+        if (interface_index == 0) and netifaces:
+            for _interface in netifaces.interfaces():
+                ipv6_addresses_dicts = netifaces.ifaddresses(_interface).get(
+                    netifaces.AF_INET6, []
+                )
+                for adict in ipv6_addresses_dicts:
+                    if adict["addr"].split("%")[0] == self.ip.compressed:
+                        interface_index = socket.if_nametoindex(_interface)
+                        if _debug:
+                            IPv6Address._debug(
+                                "    - interface_index (auto): %r", interface_index
+                            )
+                        break
+                if interface_index:
+                    break
 
         self.addrAddr = self.packed + struct.pack("!H", port & _short_mask)
         self.addrLen = len(self.addrAddr)
