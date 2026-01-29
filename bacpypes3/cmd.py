@@ -51,6 +51,7 @@ class CmdProfile:
         # try to convert the value
         origin = typing.get_origin(arg_type)
         if origin is Union:
+            last_err: Optional[Exception] = None
             for arg_subtype in typing.get_args(arg_type):
                 if _debug:
                     CmdProfile._debug("    - arg_subtype: %r", arg_subtype)
@@ -63,6 +64,7 @@ class CmdProfile:
                 except Exception as err:
                     if _debug:
                         CmdProfile._debug("    - exception: %r", err)
+                    last_err = err
                     pass
             else:
                 arg_type_names = [
@@ -71,13 +73,16 @@ class CmdProfile:
                     if arg is not None.__class__
                 ]
                 if len(arg_type_names) > 1:
+                    expected_msg = f"one of {', '.join(arg_type_names)}"
+                else:
+                    expected_msg = arg_type_names[0]
+
+                if last_err:
                     raise RuntimeError(
-                        f"parameter {arg}: one of {', '.join(arg_type_names)} expected"
+                        f"parameter {arg}: {last_err}: {expected_msg} expected"
                     )
                 else:
-                    raise RuntimeError(
-                        f"parameter {arg}: {arg_type_names[0]} expected"
-                    )
+                    raise RuntimeError(f"parameter {arg}: {expected_msg} expected")
         else:
             try:
                 arg_value = arg_type(raw_arg)

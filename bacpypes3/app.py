@@ -44,6 +44,7 @@ from .basetypes import (
     ServicesSupported,
 )
 from .comm import ApplicationServiceElement, bind
+from .settings import settings
 from .debugging import DebugContents, ModuleLogger, bacpypes_debugging
 from .errors import AbortException, ExecutionError, RejectException, UnrecognizedService
 from .ipv4.link import BBMDLinkLayer as BBMDLinkLayer_ipv4
@@ -544,24 +545,43 @@ class Application(
 
         # maybe this is a foreign device
         if args.foreign is not None:
-            network_port_object.bacnetIPMode = IPMode.foreign
-            network_port_object.fdBBMDAddress = HostNPort(args.foreign)
-            network_port_object.fdSubscriptionLifetime = args.ttl
+            if network_port_object.networkType == NetworkType.ipv4:
+                network_port_object.bacnetIPMode = IPMode.foreign
+                network_port_object.fdBBMDAddress = HostNPort(args.foreign)
+                network_port_object.fdSubscriptionLifetime = args.ttl
+            elif network_port_object.networkType == NetworkType.ipv6:
+                network_port_object.bacnetIPv6Mode = IPMode.foreign
+                network_port_object.fdBBMDAddress = HostNPort(args.foreign)
+                network_port_object.fdSubscriptionLifetime = args.ttl
 
         # maybe this is a BBMD
         if args.bbmd is not None:
-            network_port_object.bacnetIPMode = IPMode.bbmd
-            network_port_object.bbmdAcceptFDRegistrations = True  # Boolean
-            network_port_object.bbmdForeignDeviceTable = []  # ListOf(FDTEntry)
+            if network_port_object.networkType == NetworkType.ipv4:
+                network_port_object.bacnetIPMode = IPMode.bbmd
+                network_port_object.bbmdAcceptFDRegistrations = True  # Boolean
+                network_port_object.bbmdForeignDeviceTable = []  # ListOf(FDTEntry)
 
-            # populate the BDT
-            bdt = []
-            for addr in args.bbmd:
-                bdt_entry = BDTEntry(addr)
-                if _debug:
-                    Application._debug("    - bdt_entry: %r", bdt_entry)
-                bdt.append(bdt_entry)
-            network_port_object.bbmdBroadcastDistributionTable = bdt
+                # populate the BDT
+                bdt = []
+                for addr in args.bbmd:
+                    bdt_entry = BDTEntry(addr)
+                    if _debug:
+                        Application._debug("    - bdt_entry: %r", bdt_entry)
+                    bdt.append(bdt_entry)
+                network_port_object.bbmdBroadcastDistributionTable = bdt
+            elif network_port_object.networkType == NetworkType.ipv6:
+                network_port_object.bacnetIPv6Mode = IPMode.bbmd
+                network_port_object.bbmdAcceptFDRegistrations = True  # Boolean
+                network_port_object.bbmdForeignDeviceTable = []  # ListOf(FDTEntry)
+
+                # populate the BDT
+                bdt = []
+                for addr in args.bbmd:
+                    bdt_entry = BDTEntry(addr)
+                    if _debug:
+                        Application._debug("    - bdt_entry: %r", bdt_entry)
+                    bdt.append(bdt_entry)
+                network_port_object.bbmdBroadcastDistributionTable = bdt
 
         # continue the build process
         return cls.from_object_list(
@@ -611,6 +631,10 @@ class Application(
             if obj.protocolLevel != ProtocolLevel.bacnetApplication:
                 pass
             elif obj.networkType == NetworkType.ipv4:
+                # if the network type is not set, set it to ipv4
+                if not settings.network_type:
+                    settings.network_type = "ipv4"
+
                 link_address = obj.address
                 if _debug:
                     Application._debug("     - link_address: %r", link_address)
@@ -662,6 +686,10 @@ class Application(
                     )
 
             elif obj.networkType == NetworkType.ipv6:
+                # if the network type is not set, set it to ipv6
+                if not settings.network_type:
+                    settings.network_type = "ipv6"
+
                 link_address = obj.address
                 if _debug:
                     Application._debug("     - link_address: %r", link_address)
@@ -684,9 +712,11 @@ class Application(
                     Application._debug("     - virtual_address: %r", virtual_address)
 
                 # multicast groups
-                multicast_groups = [
-                    socket.inet_ntop(socket.AF_INET6, obj.bacnetIPv6MulticastAddress)
-                ]
+                multicast_groups: List[str] = []
+                if obj.bacnetIPv6MulticastAddress:
+                    multicast_groups.append(
+                        socket.inet_ntop(socket.AF_INET6, obj.bacnetIPv6MulticastAddress)
+                    )
                 if _debug:
                     Application._debug("     - multicast_groups: %r", multicast_groups)
 

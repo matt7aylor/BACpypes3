@@ -76,7 +76,7 @@ class VirtualMACAddressTable(DebugContents):
         elif isinstance(item, IPv6Address):
             return self.ipv6_to_vmac.get(item, None)
         else:
-            raise TypeError(f"item: {item!r}")
+            return None
 
     def __setitem__(
         self,
@@ -203,11 +203,14 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
                 # if there is no VMAC, we have to resolve it
                 if not pdu.pduDestination:
                     if _debug:
-                        BIPNormal._debug("    - VMAC for %r unknown, sending as broadcast", destination_ipv6_address)
+                        BIPNormal._debug(
+                            "    - VMAC for %r unknown, sending as broadcast",
+                            destination_ipv6_address,
+                        )
                     # make an original broadcast PDU, but send it to the specific IPv6 address
                     xpdu = OriginalBroadcastNPDU(
                         self.virtual_address,
-                        pdu,
+                        pdu.pduData,
                         destination=destination_ipv6_address,
                         user_data=pdu.pduUserData,
                     )
@@ -217,11 +220,15 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
                     # send it downstream
                     await self.request(xpdu)
                     return
-            else:
+            elif isinstance(pdu.pduDestination, VirtualAddress):
                 # destination address is a VirtualAddress
-                destination_ipv6_address: IPv6Address = self.vmac_addr_table[
-                    pdu.pduDestination
-                ]
+                destination_ipv6_address = self.vmac_addr_table[pdu.pduDestination]
+            else:
+                BIPNormal._warning(
+                    "dropping PDU for incompatible address family: %r",
+                    pdu.pduDestination,
+                )
+                return
 
             # if there is a service element, let it resolve it
             if not destination_ipv6_address:
@@ -241,7 +248,7 @@ class BIPNormal(BVLLServiceAccessPoint, DebugContents):
             xpdu = OriginalUnicastNPDU(
                 self.virtual_address,
                 pdu.pduDestination,
-                pdu,
+                pdu.pduData,
                 destination=destination_ipv6_address,
                 user_data=pdu.pduUserData,
             )
