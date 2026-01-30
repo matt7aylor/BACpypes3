@@ -122,6 +122,9 @@ class IPv6DatagramServer(Server[PDU]):
         local_socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_UNICAST_HOPS, 64)
         local_socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 255)
 
+        # disable multicast loopback
+        local_socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, 0)
+
         # set the multicast interface
         if self.interface_index:
             local_socket.setsockopt(
@@ -203,6 +206,9 @@ class IPv6DatagramServer(Server[PDU]):
                         self.interface_index,
                     ),
                 )
+
+            # disable multicast loopback
+            multicast_socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, 0)
 
             # bind to the wildcard address to receive multicast
             multicast_socket.bind(("", self.local_address[1], 0, self.interface_index))
@@ -321,19 +327,9 @@ class IPv6DatagramServer(Server[PDU]):
             IPv6DatagramServer._debug("confirmation %r", pdu)
 
         assert isinstance(pdu.pduSource, IPv6Address)
-        if pdu.pduSource.addrTuple == self.local_address:
+        if pdu.pduSource.addrTuple[:2] == self.local_address[:2]:
             if _debug:
-                IPv6DatagramServer._debug("    - broadcast/reflected")
-            return
-
-        # check for LoopbackAddress
-        if pdu.pduSource.addrTuple[0] == "::1":
-            if _debug:
-                IPv6DatagramServer._debug("    - loopback")
-            if pdu.pduSource.addrTuple[1] == self.local_address[1]:
-                if _debug:
-                    IPv6DatagramServer._debug("    - broadcast/reflected (loopback)")
-                return
+                IPv6DatagramServer._debug("    - broadcast/reflected?")
 
         # up the stack it goes
         await self.response(pdu)
