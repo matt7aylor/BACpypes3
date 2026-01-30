@@ -183,6 +183,8 @@ class IPv6DatagramServer(Server[PDU]):
             if _debug:
                 IPv6DatagramServer._debug("    - multicast_socket: %r", multicast_socket)
 
+            # make socket ipv6 only, leaving port free for ipv4 applications
+            multicast_socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
             # allow multiple applications to use the same port
             multicast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             if hasattr(socket, "SO_REUSEPORT"):
